@@ -68,9 +68,10 @@ function handleWord(lastWord: string): string {
 		const withoutClassKeyword = fileContent!
 			.substring(counter, classBracketIndex)
 			.trim();
-		const className: string = withoutClassKeyword
+		let className: string = withoutClassKeyword
 			.substring(0, withoutClassKeyword.indexOf(' '))
 			.trim();
+		console.error('classwithout keyword:', withoutClassKeyword);
 		const parents: string[] = [];
 		const implKeywordIndex = withoutClassKeyword.indexOf(
 			' ',
@@ -79,6 +80,13 @@ function handleWord(lastWord: string): string {
 		parents.push(
 			...withoutClassKeyword.substring(implKeywordIndex).trim().split(','),
 		);
+
+		if (className === '') {
+			className = withoutClassKeyword;
+			while (parents.length) {
+				parents.pop();
+			}
+		}
 
 		classBrackets.push('{');
 		counter = classBracketIndex;
@@ -119,7 +127,6 @@ function handleWord(lastWord: string): string {
 					.replace(/ /g, '');
 			word = word.trim();
 
-			// console.log(word);
 			counter = Math.min(
 				fileContent!.indexOf('{', counter - currentWord.length),
 				fileContent!.indexOf(';', counter - currentWord.length),
