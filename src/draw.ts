@@ -7,6 +7,7 @@ export function drawClasses(
     }[],
 ) {
     console.log('@startuml');
+    const relations: string[] = [];
     for (let classIndex = 0; classIndex < classes.length; classIndex++) {
         console.log('class ' + classes[classIndex].name + '{\n');
         for (
@@ -37,7 +38,18 @@ export function drawClasses(
                 classes[classIndex].methods[methodIndex].returnType,
             );
         }
+
+        for (let i = 0; i < classes[classIndex].parentclasses.length; i++) {
+            relations.push(
+                classes[classIndex].name +
+                ' --|> ' +
+                classes[classIndex].parentclasses[i],
+            );
+        }
         console.log('}\n');
+    }
+    for (let k = 0; k < relations.length; k++) {
+        console.log(relations[k]);
     }
     console.log('@enduml');
 }
