@@ -24,6 +24,11 @@ export function drawClasses(
                 ': ' +
                 classes[classIndex].attributes[attributeIndex].type,
             );
+            setRelations(
+                classes[classIndex].name,
+                classes[classIndex].attributes[attributeIndex].type,
+                relations,
+            );
         }
         for (
             let methodIndex = 0;
@@ -36,6 +41,11 @@ export function drawClasses(
                 classes[classIndex].methods[methodIndex].fn +
                 ': ' +
                 classes[classIndex].methods[methodIndex].returnType,
+            );
+            setRelations(
+                classes[classIndex].name,
+                classes[classIndex].methods[methodIndex].returnType,
+                relations,
             );
         }
 
@@ -74,4 +84,16 @@ function getVisibility(visibility: string): string {
         default:
             return prefix + vis;
     }
+}
+function setRelations(
+    methodName: string,
+    returnType: string,
+    relationsArray: string[],
+) {
+    const ignoreTypes: string[] = ['void', 'number', 'string', 'boolean', ''];
+    if (ignoreTypes.includes(returnType)) return;
+    // TODO: Generics, Promises
+    relationsArray.push(
+        methodName + ' --> ' + returnType.replace('[', '').replace(']', ''),
+    );
 }

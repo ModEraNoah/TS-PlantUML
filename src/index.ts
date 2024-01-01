@@ -1,6 +1,43 @@
 import fs from 'fs';
 import { drawClasses } from './draw';
 
+function getFilesOfDir(dir: string): string[] | undefined {
+	let dirContent;
+	try {
+		dirContent = fs
+			.readdirSync(dir, { withFileTypes: true })
+			.map((item: any) => {
+				if (!item.isDirectory()) {
+					// getFilesOfDir(item.name);
+					// return item;
+					if (
+						item.name.endsWith('.ts') &&
+						!item.name.includes('DAO') &&
+						!item.name.includes('Connector')
+					)
+						return item.path + item.name;
+					return;
+				} else {
+					let res = getFilesOfDir(item.path + item.name)!;
+					res = res.map((it: any) => {
+						return (
+							item.path +
+							item.name +
+							'/' +
+							it.substring((item.path + item.name).length)
+						);
+					});
+					return res;
+				}
+				// console.log(item);
+			})
+			.filter((item) => item);
+	} catch (e) {
+		console.error('error while reading dictionary');
+	}
+	return dirContent?.flat();
+}
+
 function getFileContent(file: string) {
 	let contents;
 	try {
@@ -12,8 +49,19 @@ function getFileContent(file: string) {
 	return contents;
 }
 
-const fileContent = getFileContent('../Airline/src/Airline.ts');
-// const fileContent = getFileContent('src/index.ts');
+// const fileContent = getFileContent('../Airline/src/Airline.ts');
+
+const dirToScan: string = '../Airline/src/';
+
+const tsFiles = getFilesOfDir(dirToScan)!;
+console.log('tsfiles: ', tsFiles);
+
+let fileContent = '';
+
+tsFiles.forEach((file) => {
+	fileContent += getFileContent(file);
+	fileContent += '\n';
+});
 
 let counter: number = 0;
 let wordStart: number = 0;
@@ -60,6 +108,14 @@ function handleWord(lastWord: string): string {
 			fileContent!.indexOf('\n', counter),
 			fileContent!.indexOf(';', counter),
 		);
+	}
+	// single-line comment
+	else if (currentWord === '//') {
+		counter = fileContent!.indexOf('\n', counter);
+	}
+	// multi-line comment
+	else if (currentWord === '/*') {
+		counter = fileContent!.indexOf('*/');
 	} else if (currentWord === 'export') {
 		// do nothing
 	} else if (currentWord === 'class') {
@@ -71,7 +127,6 @@ function handleWord(lastWord: string): string {
 		let className: string = withoutClassKeyword
 			.substring(0, withoutClassKeyword.indexOf(' '))
 			.trim();
-		console.error('classwithout keyword:', withoutClassKeyword);
 		const parents: string[] = [];
 		const implKeywordIndex = withoutClassKeyword.indexOf(
 			' ',
@@ -98,15 +153,7 @@ function handleWord(lastWord: string): string {
 			attributes: [],
 		});
 	}
-	// single-line comment
-	else if (currentWord === '//') {
-		counter = fileContent!.indexOf('\n', counter);
-	}
-	// multi-line comment
-	else if (currentWord === '/*') {
-		counter = fileContent!.indexOf('*/');
-	}
-	// -> if current Word points to a function/method
+	// -> if current Word points to a function/method (and _not_ to an error)
 	else if (
 		(currentWord!.includes('(') || currentWord === '(') &&
 		!currentWord!.includes('Error')
@@ -131,7 +178,7 @@ function handleWord(lastWord: string): string {
 				fileContent!.indexOf('{', counter - currentWord.length),
 				fileContent!.indexOf(';', counter - currentWord.length),
 			);
-		} else if (currentWord!.includes('(')) {
+		} else {
 			let newCounter = Math.min(
 				Math.max(
 					fileContent!.indexOf('{', counter - currentWord.length),
@@ -194,10 +241,18 @@ function handleWord(lastWord: string): string {
 			);
 			word = word.trim();
 
+			let type = '';
+			if (word.indexOf(':') >= 0) {
+				type = word
+					.substring(word.indexOf(':') + 1)
+					.trim()
+					.replace(';', '');
+			}
+
 			classes[classes.length - 1].attributes.push({
 				visibility: lastVisibilityOperator.pop()!,
 				name: word.substring(0, word.indexOf(' ')).trim().replace(':', ''),
-				type: word.substring(word.indexOf(':') + 1).trim(),
+				type: type,
 			});
 			counter = varEnd + 1;
 		} else {
@@ -209,7 +264,7 @@ function handleWord(lastWord: string): string {
 			}
 		}
 	} else {
-		console.log(currentWord);
+		// console.log(currentWord);
 	}
 	return currentWord;
 }
@@ -226,7 +281,5 @@ function getClosingBracket(index: number): number {
 	}
 	return index;
 }
-
-console.log('classes-Array: ', classes);
 
 drawClasses(classes);
