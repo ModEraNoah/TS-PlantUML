@@ -90,7 +90,15 @@ function setRelations(
     returnType: string,
     relationsArray: string[],
 ) {
-    const ignoreTypes: string[] = ['void', 'number', 'string', 'boolean', ''];
+    const ignoreTypes: string[] = [
+        'any',
+        'unknown',
+        'void',
+        'number',
+        'string',
+        'boolean',
+        '',
+    ];
     if (ignoreTypes.includes(returnType)) return;
     // TODO: Generics, Promises
     relationsArray.push(

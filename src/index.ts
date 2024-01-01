@@ -9,8 +9,6 @@ function getFilesOfDir(dir: string): string[] | undefined {
 			.readdirSync(dir, { withFileTypes: true })
 			.map((item: any) => {
 				if (!item.isDirectory()) {
-					// getFilesOfDir(item.name);
-					// return item;
 					if (
 						item.name.endsWith('.ts') &&
 						!item.name.includes('DAO') &&
@@ -50,7 +48,7 @@ function getFileContent(file: string) {
 	return contents;
 }
 
-// const fileContent = getFileContent('../Airline/src/Airline.ts');
+// const fileContent = getFileContent('../Conways_Game_of_Life/main.ts');
 
 const dirToScan: string = '../Airline/src/';
 
@@ -139,6 +137,7 @@ function getWordType(currentWord: string): string {
 	)
 		return 'method';
 	if (currentWord === 'new') return 'object';
+	if (currentWord === 'async') return 'async';
 	return 'unknown';
 }
 
