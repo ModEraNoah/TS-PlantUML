@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { drawClasses } from './draw';
+import { isMethodSignature } from 'typescript';
 
 function getFileContent(file: string) {
 	let contents;
@@ -31,10 +32,25 @@ const classes: {
 	attributes: { visibility: string; name: string; type: string }[];
 }[] = [];
 
+const functions: {
+	name: string,
+	returnType: string,
+	functionParams: string
+}[] = [];
+
+const variables: {
+	name: string,
+	type: string
+}[] = []
+
 while (counter < fileContent!.length) {
 	if (isIndentation(fileContent!, counter)) {
 		if (wordStart < wordEnd) {
-			lastWord = handleWord(lastWord);
+			//lastWord = handleWord(lastWord);
+			const currentWord = fileContent!.substring(wordStart, wordEnd);
+			const currentWordType = getWordType(currentWord)
+			handleWord(currentWordType, currentWord, lastWord)
+			lastWord = currentWord
 		}
 		counter++;
 		wordStart = counter;
@@ -53,39 +69,115 @@ function isIndentation(s: string, index: number) {
 	);
 }
 
-function handleWord(lastWord: string): string {
-	const currentWord = fileContent!.substring(wordStart, wordEnd);
-	if (currentWord === 'import') {
+function getWordType(currentWord: string): string {
+	if (currentWord === "import") return "import";
+	if (currentWord === "export") return "export"
+	if (currentWord === "class") return "class";
+	if (currentWord === "function") return "function"
+	if (currentWord === "//") return "slComment"
+	if (currentWord === "*/") return "mlComment"
+	if (currentWord === "public" || currentWord === "private" || currentWord === "protected") return "accessModifiers"
+	if (currentWord.includes("Error")) return "error"
+	if (currentWord === "var" || currentWord === "const" || currentWord === "let") return "variable"
+	if ((currentWord === "(" || currentWord.includes("(")) && currentContext === "class") return "method"
+	if (currentWord === "new") return "object"
+	return "unknown"
+}
+
+function handleWord(currentWordType: string, currentWord: string, lastWord: string): void {
+	if (currentWordType === 'import' || currentWordType === "error") {
 		counter = Math.min(
 			fileContent!.indexOf('\n', counter),
 			fileContent!.indexOf(';', counter),
 		);
-	} else if (currentWord === 'export') {
-		// do nothing
-	} else if (currentWord === 'class') {
-		currentContext = 'class';
-		const classBracketIndex: number = fileContent!.indexOf('{', counter);
-		const withoutClassKeyword = fileContent!
-			.substring(counter, classBracketIndex)
-			.trim();
-		let className: string = withoutClassKeyword
-			.substring(0, withoutClassKeyword.indexOf(' '))
-			.trim();
-		console.error('classwithout keyword:', withoutClassKeyword);
-		const parents: string[] = [];
-		const implKeywordIndex = withoutClassKeyword.indexOf(
-			' ',
-			className.length + 1,
-		);
-		parents.push(
-			...withoutClassKeyword.substring(implKeywordIndex).trim().split(','),
-		);
+	}
+	else if (currentWordType === "slComment") {
+		counter = fileContent!.indexOf('\n', counter);
+	}
+	else if (currentWordType === 'mlConnent') {
+		counter = fileContent!.indexOf('*/');
+	}
+	else if (currentWordType === "accessModifiers") {
+		if (lastWord === 'static') {
+			lastVisibilityOperator.push(lastWord + ' ' + currentWord);
+		} else {
+			lastVisibilityOperator.push(currentWord);
+		}
+	}
+	else if (currentWordType === "unknown" && currentContext === "class") {
+		if (currentWord === '{') {
+			classBrackets.push('{');
+			return;
+		}
+		if (currentWord === "}") {
+			classBrackets.pop()
+			if (!classBrackets.length) currentContext = 'file';
+			return;
+		}
 
-		if (className === '') {
-			className = withoutClassKeyword;
-			while (parents.length) {
-				parents.pop();
-			}
+		const nextNewlineIndex = fileContent!.indexOf("\n", counter)
+		const nextSemicolonIndex = fileContent!.indexOf(";", counter)
+		const attributeEndIndex = Math.max(Math.min(Math.max(nextNewlineIndex, 0), Math.max(nextSemicolonIndex, 0)), counter)
+		const wholeAttribute = fileContent!.substring(counter - currentWord.length, attributeEndIndex)
+
+		const visibility = lastVisibilityOperator.pop()!
+		const attributeName: string = wholeAttribute.split("=")[0].split(":")[0]
+		let attributeType: string | undefined = wholeAttribute.split("=")[0].split(":")[1]
+		if (!attributeType) attributeType = "any"
+
+		classes[classes.length - 1].attributes.push({
+			visibility: visibility,
+			name: attributeName.trim(),
+			type: attributeType!.trim()
+		});
+		counter = attributeEndIndex + 1;
+	}
+	else if (currentWordType === "method") {
+		let returnType: string = ""
+		let methodNameAndParams: string = ""
+
+		const methodBracketIndex = fileContent!.indexOf("{", counter)
+		let methodSignature: string = ""
+
+		if (currentWord === "(") {
+			methodSignature = lastWord + fileContent!.substring(counter, methodBracketIndex)
+		} else {
+			methodSignature = fileContent!.substring(counter - currentWord.length, methodBracketIndex)
+		}
+
+		const returnTypeIndex = methodSignature.lastIndexOf(":")
+		const paramsClosingIndex = methodSignature.lastIndexOf(")")
+		if (returnTypeIndex > paramsClosingIndex) {
+			returnType = methodSignature.substring(returnTypeIndex + 1)
+			methodNameAndParams = methodSignature.substring(0, returnTypeIndex)
+		} else {
+			returnType = "any"
+			methodNameAndParams = methodSignature
+		}
+
+		classes[classes.length - 1].methods.push({
+			visibility: lastVisibilityOperator.pop() ?? '',
+			returnType: returnType,
+			fn: methodNameAndParams
+				.trim()
+				.replace(/\n/g, '')
+				.replace(/ /g, '')
+		});
+
+		counter = getClosingBracket(methodBracketIndex + 1)
+	}
+	else if (currentWordType === "class") {
+		currentContext = "class"
+
+		const classBracketIndex = fileContent!.indexOf("{", counter)
+		const withoutClassKeyword = fileContent!.substring(counter, classBracketIndex).trim()
+		const classNameEndIndex = withoutClassKeyword.indexOf(" ") > -1 ? withoutClassKeyword.indexOf(" ") : classBracketIndex
+		const className = withoutClassKeyword.substring(0, classNameEndIndex)
+
+		let classParents: string[] = []
+		if (classNameEndIndex !== classBracketIndex) {
+			classParents = withoutClassKeyword.substring(classNameEndIndex, classBracketIndex).replace(",", " ").split(" ").filter(item => item != "")
+			classParents.shift()
 		}
 
 		classBrackets.push('{');
@@ -93,125 +185,61 @@ function handleWord(lastWord: string): string {
 
 		classes.push({
 			name: className,
-			parentclasses: parents,
+			parentclasses: classParents,
 			methods: [],
 			attributes: [],
 		});
 	}
-	// single-line comment
-	else if (currentWord === '//') {
-		counter = fileContent!.indexOf('\n', counter);
+
+	else if (currentWordType === "function") {
+		let returnType: string = "any"
+		let functionName: string = ""
+		let functionParams: string = ""
+
+		const functionBracketIndex = fileContent!.indexOf("{", counter)
+		const withoutFunctionKeyword = fileContent!.substring(counter, functionBracketIndex).trim()
+
+		const returnTypeIndex = withoutFunctionKeyword.lastIndexOf(":")
+		const paramsClosingIndex = withoutFunctionKeyword.lastIndexOf(")")
+		const paramsOpeningIndex = withoutFunctionKeyword.indexOf("(")
+		if (returnTypeIndex > paramsClosingIndex) {
+			returnType = withoutFunctionKeyword.substring(returnTypeIndex).trim()
+		}
+		functionName = withoutFunctionKeyword.substring(0, paramsOpeningIndex)
+		functionParams = withoutFunctionKeyword.substring(paramsOpeningIndex, paramsClosingIndex + 1)
+
+		functions.push({
+			name: functionName,
+			returnType: returnType,
+			functionParams: functionParams
+		});
 	}
-	// multi-line comment
-	else if (currentWord === '/*') {
-		counter = fileContent!.indexOf('*/');
-	}
-	// -> if current Word points to a function/method
-	else if (
-		(currentWord!.includes('(') || currentWord === '(') &&
-		!currentWord!.includes('Error')
-	) {
-		let word = '';
-		if (currentWord === '(') {
-			word =
-				lastWord +
-				fileContent!
-					.substring(
-						counter - currentWord.length,
-						Math.min(
-							fileContent!.indexOf('{', counter - currentWord.length),
-							fileContent!.indexOf(';', counter - currentWord.length),
-						),
-					)
-					.replace(/\n/g, '')
-					.replace(/ /g, '');
-			word = word.trim();
 
-			counter = Math.min(
-				fileContent!.indexOf('{', counter - currentWord.length),
-				fileContent!.indexOf(';', counter - currentWord.length),
-			);
-		} else if (currentWord!.includes('(')) {
-			let newCounter = Math.min(
-				Math.max(
-					fileContent!.indexOf('{', counter - currentWord.length),
-					counter,
-				),
-				Math.max(
-					fileContent!.indexOf(';', counter - currentWord.length),
-					counter,
-				),
-			);
-			word =
-				' ' +
-				fileContent!
-					.substring(counter - currentWord.length, newCounter)
-					.trim()
-					.replace(/\n/g, '')
-					.replace(/ /g, '');
-			word = word.trim();
+	else if (currentWordType === "variable") {
+		let variableName: string = ""
+		let variableType: string = "any"
 
-			if (fileContent![newCounter] === '{') {
-				newCounter = getClosingBracket(newCounter + 1);
-			}
-			counter = newCounter;
-		}
+		const nextEqualIndex = fileContent!.indexOf("=", counter) > 0 ? fileContent!.indexOf("=", counter) : Infinity
+		const nextNewlineIndex = fileContent!.indexOf("\n", counter) > 0 ? fileContent!.indexOf("\n", counter) : Infinity
+		const nextSemicolonIndex = fileContent!.indexOf(";", counter) > 0 ? fileContent!.indexOf(";", counter) : Infinity
 
-		let returnType: string = '';
-		let returnTypeIndex: number = word.length;
-		if (word.substring(word.lastIndexOf(')') + 1).includes(':')) {
-			returnType = word.substring(word.lastIndexOf(')') + 2);
-			returnTypeIndex = word.lastIndexOf(returnType) - 1;
-		}
-		if (currentContext === 'class') {
-			classes[classes.length - 1].methods.push({
-				visibility: lastVisibilityOperator.pop() ?? '',
-				returnType: returnType,
-				fn: word.substring(0, returnTypeIndex),
-			});
-		}
-	} else if (currentWord === 'private' || currentWord === 'public') {
-		if (lastWord === 'static') {
-			lastVisibilityOperator.push(lastWord + ' ' + currentWord);
+		const variableEndIndex: number = Math.min(nextNewlineIndex, nextEqualIndex, nextSemicolonIndex)
+
+		const wholeVariable = fileContent!.substring(counter, variableEndIndex)
+
+		const typeStartIndex: number = wholeVariable.indexOf(":")
+		if (typeStartIndex > -1) {
+			variableType = wholeVariable.substring(typeStartIndex + 1)
+			variableName = wholeVariable.substring(0, typeStartIndex)
 		} else {
-			lastVisibilityOperator.push(currentWord);
+			variableName = wholeVariable.substring(0, wholeVariable.length - 1)
 		}
-	} else if (currentContext === 'class') {
-		if (!(currentWord === '{' || currentWord === '}')) {
-			let varEnd = Math.min(
-				Math.max(
-					fileContent!.indexOf('\n', counter - currentWord.length),
-					counter,
-				),
-				Math.max(
-					fileContent!.indexOf(';', counter - currentWord.length),
-					counter,
-				),
-			);
-			let word = fileContent!.substring(
-				counter - currentWord.length,
-				varEnd + 1,
-			);
-			word = word.trim();
 
-			classes[classes.length - 1].attributes.push({
-				visibility: lastVisibilityOperator.pop()!,
-				name: word.substring(0, word.indexOf(' ')).trim().replace(':', ''),
-				type: word.substring(word.indexOf(':') + 1).trim(),
-			});
-			counter = varEnd + 1;
-		} else {
-			if (currentWord === '{') {
-				classBrackets.push('{');
-			} else {
-				classBrackets.pop();
-				if (!classBrackets.length) currentContext = 'file';
-			}
-		}
-	} else {
-		console.log(currentWord);
+		variables.push({
+			name: variableName.trim(),
+			type: variableType.trim()
+		})
 	}
-	return currentWord;
 }
 
 function getClosingBracket(index: number): number {
@@ -230,3 +258,6 @@ function getClosingBracket(index: number): number {
 console.log('classes-Array: ', classes);
 
 drawClasses(classes);
+
+console.log("function-Array:", functions)
+console.log("variable-Array:", variables);
